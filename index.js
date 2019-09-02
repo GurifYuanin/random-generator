@@ -25,7 +25,7 @@ const app = new Vue({
         </el-form-item>
         <div style="text-align: center;">
           <el-button type="primary" @click="onSubmit">生成</el-button>
-          <el-button>取消</el-button>
+          <el-button @click="onReset">重置</el-button>
         </div>
       </el-form>
     </el-card>
@@ -69,13 +69,6 @@ const app = new Vue({
           message: '请输入内容',
         });
       }
-      if (values.some(Number.isNaN)) {
-        return this.$message({
-          type: 'error',
-          message: '存在非数字值',
-        });
-      }
-
 
       const clonedValues = values.map(v => v);
       const results = [];
@@ -98,6 +91,11 @@ const app = new Vue({
         }
       }
       this.results = results;
+    },
+    onReset() {
+      this.form.values = '';
+      this.form.canRepeat = false,
+        this.form.time = 1;
     }
   },
 })
