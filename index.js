@@ -6,7 +6,7 @@ const app = new Vue({
       <div slot="header">
         <span>参数设置</span>
       </div>
-      <el-form :model="form" label-width="150px">
+      <el-form :model="form" label-width="200px">
         <el-form-item label="奖池号码：">
           <el-input
             type="textarea"
@@ -15,14 +15,33 @@ const app = new Vue({
             v-model="form.values">
           </el-input>
         </el-form-item>
+        <el-form-item label="合并奖池重复号码：">
+          <el-switch
+            :disabled="true"
+            v-model="form.isMergeRepeat">
+          </el-switch>
+        </el-form-item>
         <el-form-item label="抽奖次数：">
           <el-input-number v-model="form.time" :min="1"></el-input-number>
         </el-form-item>
-        <el-form-item label="是否允许重复抽中：">
+        <el-form-item label="允许重复抽中：">
           <el-switch
             v-model="form.canRepeat">
           </el-switch>
         </el-form-item>
+        <el-form-item label="合并重复抽中项：">
+          <el-switch
+            :disabled="!form.canRepeat"
+            v-model="form.showRepeatTime">
+          </el-switch>
+        </el-form-item>
+        <el-collapse-transition>
+          <el-form-item v-if="form.showRepeatTime" label="按抽中次数降序排序：">
+            <el-switch
+              v-model="form.isDesc">
+            </el-switch>
+          </el-form-item>
+        </el-collapse-transition>
         <div style="text-align: center;">
           <el-button type="primary" @click="onSubmit">生成</el-button>
           <el-button @click="onReset">重置</el-button>
@@ -37,8 +56,15 @@ const app = new Vue({
         <span>生成结果</span>
       </div>
       <div v-if="results.length === 0">无结果</div>
-      <div v-else v-for="result in results" :key="result">
-        {{ result }}
+      <div v-else>
+        <div v-if="this.form.showRepeatTime">
+          <div v-for="sortedResult in sortedResults">
+            <div>值为 {{ sortedResult.element }}，共被抽中 {{ sortedResult.count }} 次</div>
+          </div>
+        </div>
+        <div v-else>
+          <div v-for="result in results" :key="result">{{ result.element }}</div>
+        </div>
       </div>
     </el-card>
   </div>
@@ -47,10 +73,42 @@ const app = new Vue({
     return {
       form: {
         values: '',
-        canRepeat: false,
         time: 1,
+        isMergeRepeat: true,
+        canRepeat: false,
+        showRepeatTime: false,
+        isDesc: true
       },
       results: [],
+    }
+  },
+  watch: {
+    'form.canRepeat'(v) {
+      if (!v) {
+        this.form.showRepeatTime = false;
+      }
+    }
+  },
+  computed: {
+    sortedResults() {
+      const sortedResults = [];
+      for (const result of this.results) {
+        const existResult = sortedResults.find(r => r.element === result.element);
+        if (existResult) {
+          existResult.count++;
+        } else {
+          sortedResults.push({
+            ...result,
+            count: 1,
+          });
+        }
+      }
+      sortedResults.sort((a, b) => {
+        return this.form.isDesc ?
+          b.count - a.count :
+          a.count - b.count;
+      });
+      return sortedResults;
     }
   },
   methods: {
@@ -70,12 +128,13 @@ const app = new Vue({
         });
       }
 
-      const clonedValues = values.map(v => v);
+      const clonedValues = this.form.isMergeRepeat ?
+        [...new Set(values.map(v => v))] :
+        values.map(v => v);
       const results = [];
       if (this.form.canRepeat) {
         for (let i = 0; i < this.form.time; i++) {
-          const { element } = this.getRandomOneFromArray(clonedValues);
-          results.push(element);
+          results.push(this.getRandomOneFromArray(clonedValues));
         }
       } else {
         if (values.length < this.form.time) {
@@ -85,9 +144,10 @@ const app = new Vue({
           });
         }
         for (let i = 0; i < this.form.time; i++) {
-          const { element, index } = this.getRandomOneFromArray(clonedValues);
-          results.push(element);
+          const result = this.getRandomOneFromArray(clonedValues)
+          const { index } = result;
           clonedValues.splice(index, 1);
+          results.push(result);
         }
       }
       this.results = results;
