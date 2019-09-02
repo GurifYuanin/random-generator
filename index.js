@@ -62,7 +62,7 @@ const app = new Vue({
       };
     },
     onSubmit() {
-      const values = this.form.values.split(/[\n\s]+/g).filter(Boolean).map(Number);
+      const values = this.form.values.split(/[\n\s]+/g).filter(Boolean);
       if (values.length === 0) {
         return this.$message({
           type: 'error',
