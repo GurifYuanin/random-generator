@@ -15,13 +15,27 @@ const app = new Vue({
             v-model="form.values">
           </el-input>
         </el-form-item>
+        <el-form-item label="自动生成奖池号码（整数）：">
+          <span> 从 </span>
+          <el-input-number size="small" :max="form.autoGenerator.max" v-model="form.autoGenerator.min"></el-input-number>
+          <span> 到 </span>
+          <el-input-number size="small" v-model="form.autoGenerator.max"></el-input-number>
+          <el-button size="small" @click="onGenerateOrderValues">顺序生成</el-button>
+          <el-button size="small" @click="onGenerateRandomValues">随机生成</el-button>
+        </el-form-item>
         <el-form-item label="合并奖池重复号码：">
           <el-switch
             :disabled="true"
             v-model="form.isMergeRepeat">
           </el-switch>
         </el-form-item>
-        <el-form-item label="抽奖次数：">
+        <el-form-item label="抽奖机制：">
+          <el-radio v-model="form.type" :label="0">抽 n 次后结束</el-radio>
+          <component :is="form.canRepeat ? 'span' : 'el-tooltip'" effect="dark" content="该功能只有打开允许重复抽中才能使用" placement="top">
+            <el-radio v-model="form.type" :label="1" :disabled="!form.canRepeat">某个号码被抽中 n 次后结束</el-radio>
+          </component>
+        </el-form-item>
+        <el-form-item label="n：">
           <el-input-number v-model="form.time" :min="1"></el-input-number>
         </el-form-item>
         <el-form-item label="允许重复抽中：">
@@ -30,10 +44,12 @@ const app = new Vue({
           </el-switch>
         </el-form-item>
         <el-form-item label="合并重复抽中项：">
-          <el-switch
-            :disabled="!form.canRepeat"
-            v-model="form.showRepeatTime">
-          </el-switch>
+          <component :is="form.canRepeat ? 'span' : 'el-tooltip'" effect="dark" content="该功能只有打开允许重复抽中才能使用" placement="top">
+            <el-switch
+              :disabled="!form.canRepeat"
+              v-model="form.showRepeatTime">
+            </el-switch>
+          </component>
         </el-form-item>
         <el-collapse-transition>
           <el-form-item v-if="form.showRepeatTime" label="按抽中次数降序排序：">
@@ -65,6 +81,7 @@ const app = new Vue({
         <div v-else>
           <div v-for="result in results" :key="result">{{ result.element }}</div>
         </div>
+        <div>共抽了 {{ totalTime }} 次</div>
       </div>
     </el-card>
   </div>
@@ -72,6 +89,11 @@ const app = new Vue({
   data() {
     return {
       form: {
+        autoGenerator: {
+          min: 1,
+          max: 1,
+        },
+        type: 0,
         values: '',
         time: 1,
         isMergeRepeat: true,
@@ -80,38 +102,65 @@ const app = new Vue({
         isDesc: true
       },
       results: [],
+      totalTime: 0, // 一共抽奖次数
     }
   },
   watch: {
     'form.canRepeat'(v) {
       if (!v) {
         this.form.showRepeatTime = false;
+        this.form.type = 0;
       }
     }
   },
   computed: {
     sortedResults() {
-      const sortedResults = [];
-      for (const result of this.results) {
-        const existResult = sortedResults.find(r => r.element === result.element);
+      const mergedResults = this.getMergedResults(this.results);
+      mergedResults.sort((a, b) => {
+        return this.form.isDesc ?
+          b.count - a.count :
+          a.count - b.count;
+      });
+      return mergedResults;
+    }
+  },
+  methods: {
+    getMergedResults(results) {
+      const mergedResults = [];
+      for (const result of results) {
+        const existResult = mergedResults.find(r => r.index === result.index);
         if (existResult) {
           existResult.count++;
         } else {
-          sortedResults.push({
+          mergedResults.push({
             ...result,
             count: 1,
           });
         }
       }
-      sortedResults.sort((a, b) => {
-        return this.form.isDesc ?
-          b.count - a.count :
-          a.count - b.count;
-      });
-      return sortedResults;
-    }
-  },
-  methods: {
+      return mergedResults;
+    },
+    onGenerateOrderValues() {
+      const min = this.form.autoGenerator.min;
+      const max = this.form.autoGenerator.max;
+      this.form.values = this.getOrderValues(min, max).join(' ');
+    },
+    getOrderValues(min, max) {
+      return Array.from({
+        length: max - min + 1
+      }).map((_, i) => i + min);
+    },
+    onGenerateRandomValues() {
+      const min = this.form.autoGenerator.min;
+      const max = this.form.autoGenerator.max;
+      const orderValues = this.getOrderValues(min, max);
+      const randomValues = [];
+      for (let i = 0; i < max - min + 1; i++) {
+        const { element } = this.getRandomOneFromArray(orderValues);
+        randomValues.push(element);
+      }
+      this.form.values = randomValues.join(' ');
+    },
     getRandomOneFromArray(array) {
       const index = Math.floor(Math.random() * array.length);
       return {
@@ -133,8 +182,26 @@ const app = new Vue({
         values.map(v => v);
       const results = [];
       if (this.form.canRepeat) {
-        for (let i = 0; i < this.form.time; i++) {
-          results.push(this.getRandomOneFromArray(clonedValues));
+        this.totalTime = 0;
+        switch(this.form.type) {
+          case 0: {
+            for (let i = 0; i < this.form.time; i++) {
+              results.push(this.getRandomOneFromArray(clonedValues));
+              this.totalTime++;
+            }
+            break;
+          }
+          case 1: {
+            let maxRepeatTime = 0;
+            while (maxRepeatTime < this.form.time) {
+              results.push(this.getRandomOneFromArray(clonedValues));
+              const mergedResults = this.getMergedResults(results);
+              this.totalTime++;
+              mergedResults.sort((a, b) => b.count - a.count);
+              maxRepeatTime = mergedResults[0].count;
+            }
+            break;
+          }
         }
       } else {
         if (values.length < this.form.time) {
@@ -143,8 +210,10 @@ const app = new Vue({
             message: '不允许重复抽中的情况下，抽奖次数不得多于奖池号码的数量',
           });
         }
+        this.totalTime = 0;
         for (let i = 0; i < this.form.time; i++) {
           const result = this.getRandomOneFromArray(clonedValues)
+          this.totalTime++;
           const { index } = result;
           clonedValues.splice(index, 1);
           results.push(result);
@@ -153,9 +222,14 @@ const app = new Vue({
       this.results = results;
     },
     onReset() {
+      this.form.autoGenerator.min = 1;
+      this.form.autoGenerator.max = 1;
       this.form.values = '';
-      this.form.canRepeat = false,
-        this.form.time = 1;
+      this.form.time = 1;
+      this.form.isMergeRepeat = true;
+      this.form.canRepeat = false;
+      this.form.showRepeatTime = false;
+      this.form.isDesc = true;
     }
   },
 })
